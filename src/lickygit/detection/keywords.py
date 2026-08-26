@@ -44,6 +44,10 @@ _FALSE_POSITIVE_VALUES: set[str] = {
 _FALSE_POSITIVE_PREFIXES: tuple[str, ...] = (
     "your-", "your_", "my-", "my_", "<", "${", "%(", "{{",
     "example", "test", "dummy", "sample", "fake", "lambda", "func",
+    "os.getenv", "os.environ", "process.env", "sys.getenv", "System.getenv",
+    "env(", "getenv(", "config(", "dotenv(", "settings.", "params.",
+    "self.", "request.", "update.", "ctx.", "context.", "auth.",
+    "str(", "int(", "bool(", "dict(", "list(", "set(",
 )
 
 _FALSE_POSITIVE_SUFFIXES: tuple[str, ...] = (

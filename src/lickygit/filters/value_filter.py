@@ -16,6 +16,10 @@ _DEFAULT_EXCLUDED_LOWER: set[str] = {
 _FALSE_PREFIXES: tuple[str, ...] = (
     "your-", "your_", "my-", "my_", "<", "${", "%(", "{{",
     "example", "test", "dummy", "sample", "fake", "mock", "lambda", "func",
+    "os.getenv", "os.environ", "process.env", "sys.getenv", "System.getenv",
+    "env(", "getenv(", "config(", "dotenv(", "settings.", "params.",
+    "self.", "request.", "update.", "ctx.", "context.", "auth.",
+    "str(", "int(", "bool(", "dict(", "list(", "set(",
 )
 
 _FALSE_SUFFIXES: tuple[str, ...] = (
