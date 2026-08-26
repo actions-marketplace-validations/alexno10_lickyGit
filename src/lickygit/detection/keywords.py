@@ -38,11 +38,12 @@ _FALSE_POSITIVE_VALUES: set[str] = {
     "placeholder", "example", "test", "dummy", "sample",
     "your_api_key_here", "your-api-key-here", "insert_here",
     "xxx", "yyy", "zzz", "value", "val", "values", "string", "text", "var", "variable",
+    "lambda", "function", "func", "callback", "handler",
 }
 
 _FALSE_POSITIVE_PREFIXES: tuple[str, ...] = (
     "your-", "your_", "my-", "my_", "<", "${", "%(", "{{",
-    "example", "test", "dummy", "sample", "fake",
+    "example", "test", "dummy", "sample", "fake", "lambda", "func",
 )
 
 _FALSE_POSITIVE_SUFFIXES: tuple[str, ...] = (

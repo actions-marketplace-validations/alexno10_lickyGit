@@ -91,10 +91,14 @@ class Scanner:
                 all_findings.extend(findings)
                 total_files += n_files
         else:
-            # Parallel
+            # Parallel (isolated GitWalker instance per thread)
+            def _worker_scan(sha: str) -> tuple[list[Finding], int]:
+                local_walker = GitWalker(self.config.repo_path, head_only=self.config.head_only)
+                return self._scan_revision(local_walker, sha)
+
             with ThreadPoolExecutor(max_workers=self.config.max_workers) as pool:
                 futures = {
-                    pool.submit(self._scan_revision, walker, sha): sha
+                    pool.submit(_worker_scan, sha): sha
                     for sha in revisions
                 }
                 for future in as_completed(futures):

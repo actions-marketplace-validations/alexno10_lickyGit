@@ -10,12 +10,12 @@ _DEFAULT_EXCLUDED_LOWER: set[str] = {
     "your_api_key_here", "your-api-key-here", "insert_here",
     "xxx", "yyy", "zzz", "abc", "abcdef", "foobar", "foo", "bar",
     "password", "secret", "token", "passw0rd", "value", "val", "values",
-    "string", "text", "var", "variable",
+    "string", "text", "var", "variable", "lambda", "function", "func", "callback", "handler",
 }
 
 _FALSE_PREFIXES: tuple[str, ...] = (
     "your-", "your_", "my-", "my_", "<", "${", "%(", "{{",
-    "example", "test", "dummy", "sample", "fake", "mock",
+    "example", "test", "dummy", "sample", "fake", "mock", "lambda", "func",
 )
 
 _FALSE_SUFFIXES: tuple[str, ...] = (
