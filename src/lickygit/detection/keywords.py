@@ -39,6 +39,7 @@ _FALSE_POSITIVE_VALUES: set[str] = {
     "your_api_key_here", "your-api-key-here", "insert_here",
     "xxx", "yyy", "zzz", "value", "val", "values", "string", "text", "var", "variable",
     "lambda", "function", "func", "callback", "handler",
+    "latest", "stable", "nightly", "write", "read", "all", "root", "nobody",
 }
 
 _FALSE_POSITIVE_PREFIXES: tuple[str, ...] = (
@@ -138,6 +139,10 @@ class KeywordDetector:
         if v_lower.startswith(_FALSE_POSITIVE_PREFIXES):
             return True
         if v_lower.endswith(_FALSE_POSITIVE_SUFFIXES):
+            return True
+
+        # Numbers or UID:GID (e.g. 1000:1000, 8080:8080)
+        if v.replace(":", "").replace("-", "").isdigit():
             return True
 
         # All identical characters (e.g. "xxxxxxxx")

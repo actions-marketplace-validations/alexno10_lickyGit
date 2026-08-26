@@ -11,6 +11,7 @@ _DEFAULT_EXCLUDED_LOWER: set[str] = {
     "xxx", "yyy", "zzz", "abc", "abcdef", "foobar", "foo", "bar",
     "password", "secret", "token", "passw0rd", "value", "val", "values",
     "string", "text", "var", "variable", "lambda", "function", "func", "callback", "handler",
+    "latest", "stable", "nightly", "write", "read", "all", "root", "nobody",
 }
 
 _FALSE_PREFIXES: tuple[str, ...] = (
