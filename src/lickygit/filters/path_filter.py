@@ -15,14 +15,14 @@ DEFAULT_EXCLUDE_PATTERNS: list[str] = [
     "*.zip", "*.tar.gz", "*.tgz", "*.rar", "*.7z", "*.jar", "*.war",
     "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
     # Lock / generated / examples
-    "*.min.js", "*.min.css", "*.map",
+    "*.min.js", "*.min.css", "*.map", "*.lock",
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Pipfile.lock",
     "poetry.lock", "Cargo.lock", "composer.lock", "Gemfile.lock",
     "*.example", "*.sample", "*.template", ".env.example", ".env.sample", ".env.template",
     # Directories
     "node_modules/*", ".git/*", "vendor/*", "__pycache__/*",
     ".venv/*", "venv/*", ".tox/*", ".mypy_cache/*",
-    "dist/*", "build/*", ".eggs/*",
+    "dist/*", "build/*", ".eggs/*", "target/*",
 ]
 
 
@@ -30,7 +30,7 @@ class PathFilter:
     """Decide whether a file should be scanned based on glob patterns.
 
     *exclude_patterns* are checked first. If a path matches any exclude
-    pattern it is **skipped** — unless it also matches an *include_pattern*
+    pattern it is **skipped** - unless it also matches an *include_pattern*
     which takes precedence and forces scanning.
     """
 
@@ -47,13 +47,17 @@ class PathFilter:
 
     def should_scan(self, file_path: str) -> bool:
         """Return *True* if *file_path* should be scanned."""
+        from pathlib import Path
+        name = Path(file_path).name
+
         # Include patterns override excludes
         if self.include_patterns:
-            if any(fnmatch(file_path, pat) for pat in self.include_patterns):
+            if any(fnmatch(file_path, pat) or fnmatch(name, pat) for pat in self.include_patterns):
                 return True
 
-        # Check excludes
-        if any(fnmatch(file_path, pat) for pat in self.exclude_patterns):
-            return False
+        # Check excludes against both relative path and basename
+        for pat in self.exclude_patterns:
+            if fnmatch(file_path, pat) or fnmatch(name, pat):
+                return False
 
         return True
