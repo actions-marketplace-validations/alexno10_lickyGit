@@ -92,4 +92,11 @@ class ValueFilter:
         if code_chars >= 2:
             return False
 
+        # Natural language / documentation sentences (3+ words or English articles)
+        words = v.split()
+        if len(words) >= 3:
+            return False
+        if v_lower.startswith(("the ", "a ", "an ", "this ", "that ")):
+            return False
+
         return True

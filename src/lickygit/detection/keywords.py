@@ -226,6 +226,13 @@ class KeywordDetector:
         if code_chars >= 2:
             return True
 
+        # Natural language / documentation sentences (3+ words or English articles)
+        words = v.split()
+        if len(words) >= 3:
+            return True
+        if v_lower.startswith(("the ", "a ", "an ", "this ", "that ")):
+            return True
+
         return False
 
     # ------------------------------------------------------------------ #
@@ -240,7 +247,11 @@ class KeywordDetector:
         for pattern, assign_type in self._patterns:
             for m in pattern.finditer(line):
                 keyword = m.group("keyword")
-                value = m.group("value").strip().rstrip("'\"`,;")
+                raw_val = m.group("value").strip()
+                # Strip trailing inline comments for unquoted values (e.g. `val # comment`)
+                if not (raw_val.startswith(('"', "'")) and raw_val.endswith(('"', "'"))):
+                    raw_val = raw_val.split("#")[0].split("//")[0]
+                value = raw_val.strip().rstrip("'\"`,;")
 
                 if self._is_false_positive(value):
                     continue

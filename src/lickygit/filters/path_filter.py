@@ -14,10 +14,11 @@ DEFAULT_EXCLUDE_PATTERNS: list[str] = [
     "*.mp3", "*.mp4", "*.avi", "*.mov",
     "*.zip", "*.tar.gz", "*.tgz", "*.rar", "*.7z", "*.jar", "*.war",
     "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
-    # Lock / generated / examples
+    # Lock / generated / examples / schemas
     "*.min.js", "*.min.css", "*.map", "*.lock",
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Pipfile.lock",
     "poetry.lock", "Cargo.lock", "composer.lock", "Gemfile.lock",
+    "go.sum", "go.work.sum", "*.sum", "*.schema.json",
     "*.example", "*.sample", "*.template", ".env.example", ".env.sample", ".env.template",
     # Directories
     "node_modules/*", ".git/*", "vendor/*", "__pycache__/*",
