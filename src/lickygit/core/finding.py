@@ -59,12 +59,20 @@ class Finding:
             return "***"
         return self.matched_text[:4] + "***"
 
+    @property
+    def fingerprint(self) -> str:
+        """Unique stable identifier for baseline tracking."""
+        import hashlib
+        raw = f"{self.rule_id}:{self.file_path}:{self.matched_text}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to a plain dictionary suitable for serialization."""
         d = asdict(self)
         d["severity"] = self.severity.value
         d["detection_type"] = self.detection_type.value
         d["redacted_value"] = self.redacted_value
+        d["fingerprint"] = self.fingerprint
         return d
 
     def __str__(self) -> str:

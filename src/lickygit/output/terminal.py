@@ -57,12 +57,15 @@ class TerminalFormatter:
             f"[cyan]{result.scan_duration:.2f}s[/cyan] - "
             f"[dim]{result.total_commits} commits, {result.total_files} files[/dim]"
         )
-        self.console.print(
+        msg = (
             f"  [bold red]Critical:[/bold red] {counts['CRITICAL']}  "
             f"[bold yellow]High:[/bold yellow] {counts['HIGH']}  "
             f"[cyan]Medium:[/cyan] {counts['MEDIUM']}  "
             f"[dim]Low:[/dim] {counts['LOW']}"
         )
+        if result.suppressed_by_baseline > 0:
+            msg += f"  [dim]({result.suppressed_by_baseline} suppressed by baseline)[/dim]"
+        self.console.print(msg)
         self.console.print()
 
         if not result.findings:

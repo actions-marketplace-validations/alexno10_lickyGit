@@ -104,8 +104,24 @@ class GitWalker:
         """
         # 1. Staged files from Git index (pre-commit)
         if commit_sha == "STAGED" or self.staged:
+            # If HEAD exists, only inspect files with staged additions/modifications
+            staged_paths: set[str] | None = None
+            try:
+                diffs = self.repo.head.commit.diff()
+                staged_paths = {
+                    d.b_path or d.a_path
+                    for d in diffs
+                    if d.change_type in ("A", "M", "R", "C") and (d.b_path or d.a_path)
+                }
+            except Exception:
+                # Initial commit (no HEAD yet): scan all staged entries
+                staged_paths = None
+
             for (path, stage), entry in self.repo.index.entries.items():
                 if stage != 0:
+                    continue
+                path_str = str(path)
+                if staged_paths is not None and path_str not in staged_paths:
                     continue
                 try:
                     stream = self.repo.odb.stream(entry.binsha)
@@ -115,7 +131,7 @@ class GitWalker:
                     if len(data) > max_file_size or b"\x00" in data[:8192]:
                         continue
                     text = data.decode("utf-8", errors="replace")
-                    yield (str(path), text, entry.hexsha)
+                    yield (path_str, text, entry.hexsha)
                 except Exception:
                     continue
             return

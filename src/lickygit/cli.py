@@ -65,6 +65,8 @@ def main(ctx: click.Context) -> None:
 @click.option("--no-builtin-rules", is_flag=True, help="Disable built-in patterns.")
 @click.option("--custom-rules", default=None, type=click.Path(exists=True), help="Custom rules file (TOML/YAML).")
 @click.option("--allowlist", default=None, type=click.Path(exists=True), help="Allowlist file path.")
+@click.option("--baseline", default=None, type=click.Path(exists=True), help="Path to baseline file to ignore known findings.")
+@click.option("--generate-baseline", default=None, type=click.Path(), help="Path to generate baseline JSON file from findings.")
 @click.option("--exclude", multiple=True, help="Glob patterns to exclude.")
 @click.option("--include", multiple=True, help="Glob patterns to include.")
 @click.option("--max-workers", default=None, type=int, help="Thread pool size (default: 4).")
@@ -86,6 +88,8 @@ def scan(
     no_builtin_rules: bool,
     custom_rules: str | None,
     allowlist: str | None,
+    baseline: str | None,
+    generate_baseline: str | None,
     exclude: tuple[str, ...],
     include: tuple[str, ...],
     max_workers: int | None,
@@ -127,6 +131,10 @@ def scan(
         cli["custom_rules_path"] = custom_rules
     if allowlist:
         cli["allowlist_path"] = allowlist
+    if baseline:
+        cli["baseline_path"] = baseline
+    if generate_baseline:
+        cli["generate_baseline_path"] = generate_baseline
     if exclude:
         cli["exclude_paths"] = list(exclude)
     if include:
@@ -189,11 +197,15 @@ def scan(
         exclude_paths=cfg.exclude_paths,
         include_paths=cfg.include_paths,
         min_severity=cfg.min_severity,
+        baseline_path=cfg.baseline_path,
+        generate_baseline_path=cfg.generate_baseline_path,
     )
 
     try:
         scanner = Scanner(scan_cfg, engine=engine, allowlist=allow, path_filter=path_filter)
         result = scanner.scan()
+        if cfg.generate_baseline_path:
+            console.print(f"[bold green]Baseline file successfully generated at:[/bold green] {cfg.generate_baseline_path}")
     except GitWalkerError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(2)

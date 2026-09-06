@@ -47,9 +47,9 @@ yaml = ["pyyaml>=6.0"]
 lickygit = "lickygit.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/lickygit/lickygit"
-Repository = "https://github.com/lickygit/lickygit"
-Issues = "https://github.com/lickygit/lickygit/issues"
+Homepage = "https://github.com/alexno10/lickyGit"
+Repository = "https://github.com/alexno10/lickyGit"
+Issues = "https://github.com/alexno10/lickyGit/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lickygit"]

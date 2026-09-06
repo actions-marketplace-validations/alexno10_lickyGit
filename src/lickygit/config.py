@@ -36,6 +36,8 @@ class ScanConfig:
     exclude_paths: list[str] = field(default_factory=list)
     include_paths: list[str] = field(default_factory=list)
     allowlist_path: str | None = None
+    baseline_path: str | None = None
+    generate_baseline_path: str | None = None
     min_severity: Severity = Severity.LOW
 
     # ── output ─────────────────────────────────────────────────────────
@@ -128,6 +130,7 @@ def load_config(path: str | Path | None = None) -> ScanConfig:
         exclude_paths=filters.get("exclude", []),
         include_paths=filters.get("include", []),
         allowlist_path=filters.get("allowlist", None),
+        baseline_path=filters.get("baseline", None),
         output_format=output.get("format", "terminal"),
         verbose=output.get("verbose", False),
         use_color=output.get("color", True),

@@ -1,0 +1,109 @@
+name: 'lickyGit Secret Scanner'
+description: 'High-performance secret scanner for Git repositories, pull requests, and commit history.'
+author: 'alexno10'
+
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Path to repository to scan'
+    required: false
+    default: '.'
+  severity:
+    description: 'Minimum severity to report: low, medium, high, critical'
+    required: false
+    default: 'high'
+  format:
+    description: 'Output format: terminal, sarif, json, csv, html'
+    required: false
+    default: 'terminal'
+  output:
+    description: 'File path to save the scan report'
+    required: false
+    default: ''
+  baseline:
+    description: 'Path to baseline file to ignore known findings'
+    required: false
+    default: ''
+  head-only:
+    description: 'Scan only HEAD commit rather than full git history'
+    required: false
+    default: 'false'
+  staged:
+    description: 'Scan only staged changes'
+    required: false
+    default: 'false'
+  upload-sarif:
+    description: 'Automatically upload SARIF results to GitHub Security tab'
+    required: false
+    default: 'false'
+
+outputs:
+  exit-code:
+    description: 'Exit code of the scan (0 for clean, 1 for secrets found)'
+    value: ${{ steps.scan.outputs.exit_code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install lickyGit
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install "${{ github.action_path }}"
+
+    - name: Run lickyGit Scan
+      id: scan
+      shell: bash
+      run: |
+        ARGS="${{ inputs.path }} --severity ${{ inputs.severity }} --format ${{ inputs.format }}"
+        
+        if [ "${{ inputs.head-only }}" = "true" ]; then
+          ARGS="$ARGS --head-only"
+        fi
+        
+        if [ "${{ inputs.staged }}" = "true" ]; then
+          ARGS="$ARGS --staged"
+        fi
+        
+        if [ -n "${{ inputs.output }}" ]; then
+          ARGS="$ARGS -o ${{ inputs.output }}"
+        elif [ "${{ inputs.upload-sarif }}" = "true" ]; then
+          ARGS="$ARGS -f sarif -o lickygit-results.sarif"
+        fi
+        
+        if [ -n "${{ inputs.baseline }}" ]; then
+          ARGS="$ARGS --baseline ${{ inputs.baseline }}"
+        fi
+
+        echo "Running: lickygit scan $ARGS"
+        set +e
+        lickygit scan $ARGS
+        EXIT_CODE=$?
+        echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        
+        if [ "$EXIT_CODE" -ne 0 ] && [ "${{ inputs.upload-sarif }}" != "true" ]; then
+          exit $EXIT_CODE
+        fi
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.output || 'lickygit-results.sarif' }}
+        category: 'lickygit'
+
+    - name: Check Final Status
+      shell: bash
+      run: |
+        if [ "${{ steps.scan.outputs.exit_code }}" -ne 0 ]; then
+          echo "::error::lickyGit identified secrets in this repository."
+          exit ${{ steps.scan.outputs.exit_code }}
+        fi

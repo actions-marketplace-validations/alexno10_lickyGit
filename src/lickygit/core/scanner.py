@@ -12,6 +12,7 @@ from lickygit.core.finding import Finding, Severity
 from lickygit.core.git_walker import DEFAULT_MAX_FILE_SIZE, GitWalker
 from lickygit.detection.engine import DetectionEngine
 from lickygit.filters.allowlist import AllowList
+from lickygit.filters.baseline import Baseline
 from lickygit.filters.path_filter import PathFilter
 
 
@@ -27,6 +28,8 @@ class ScanConfig:
     include_paths: list[str] = field(default_factory=list)
     min_severity: Severity = Severity.LOW
     max_file_size: int = DEFAULT_MAX_FILE_SIZE
+    baseline_path: str | None = None
+    generate_baseline_path: str | None = None
 
 
 @dataclass
@@ -37,6 +40,7 @@ class ScanResult:
     scan_duration: float = 0.0
     total_commits: int = 0
     total_files: int = 0
+    suppressed_by_baseline: int = 0
 
     @property
     def counts_by_severity(self) -> dict[str, int]:
@@ -66,6 +70,7 @@ class Scanner:
         engine: DetectionEngine | None = None,
         allowlist: AllowList | None = None,
         path_filter: PathFilter | None = None,
+        baseline: Baseline | None = None,
     ) -> None:
         self.config = config
         self.engine = engine or DetectionEngine()
@@ -73,6 +78,11 @@ class Scanner:
         self.path_filter = path_filter or PathFilter(
             exclude_patterns=config.exclude_paths or None,
             include_patterns=config.include_paths or None,
+        )
+        self.baseline = baseline or (
+            Baseline.load_from_file(config.baseline_path)
+            if config.baseline_path
+            else None
         )
         self._scanned_blobs: set[str] = set()
         self._blob_lock = threading.Lock()
@@ -125,6 +135,15 @@ class Scanner:
         # Severity filter
         unique = [f for f in unique if f.severity >= self.config.min_severity]
 
+        # Baseline filter (suppress existing legacy findings)
+        suppressed_count = 0
+        if self.baseline:
+            unique, suppressed_count = self.baseline.filter_findings(unique)
+
+        # Generate baseline file if requested
+        if self.config.generate_baseline_path:
+            Baseline.generate(unique, self.config.generate_baseline_path)
+
         elapsed = time.perf_counter() - t0
 
         return ScanResult(
@@ -132,6 +151,7 @@ class Scanner:
             scan_duration=elapsed,
             total_commits=len(revisions),
             total_files=total_files,
+            suppressed_by_baseline=suppressed_count,
         )
 
     # ------------------------------------------------------------------ #

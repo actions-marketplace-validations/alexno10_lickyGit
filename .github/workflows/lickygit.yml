@@ -1,0 +1,28 @@
+name: Security Scan (lickyGit)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  secret-scan:
+    name: Scan for Leaked Secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout Code (Full History)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run lickyGit
+        uses: alexno10/lickyGit@main
+        with:
+          severity: 'high'
+          upload-sarif: 'true'
