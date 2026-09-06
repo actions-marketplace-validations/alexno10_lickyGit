@@ -2,13 +2,40 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from git import Repo, InvalidGitRepositoryError, GitCommandNotFound
+
+
+# Default maximum file size to scan (5 MB). Files larger than this are skipped to prevent OOM.
+DEFAULT_MAX_FILE_SIZE: int = 5 * 1024 * 1024
+
+
+def safe_rmtree(target_dir: str | Path) -> None:
+    """Recursively remove a directory, handling Windows read-only git files."""
+    p = Path(target_dir)
+    if not p.exists():
+        return
+
+    def _handle_readonly(func: Any, path: str, exc: Any) -> None:
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(p, onexc=_handle_readonly)
+    else:
+        shutil.rmtree(p, onerror=_handle_readonly)
 
 
 class GitWalkerError(Exception):
@@ -22,9 +49,15 @@ class GitWalker:
     Never calls ``os.chdir`` — all operations use explicit paths.
     """
 
-    def __init__(self, repo_path: str | Path, head_only: bool = False) -> None:
+    def __init__(
+        self,
+        repo_path: str | Path,
+        head_only: bool = False,
+        staged: bool = False,
+    ) -> None:
         self.repo_path = Path(repo_path).resolve()
         self.head_only = head_only
+        self.staged = staged
         try:
             self.repo = Repo(self.repo_path)
         except InvalidGitRepositoryError as exc:
@@ -41,11 +74,18 @@ class GitWalker:
     def get_revisions(self) -> list[str]:
         """Return commit SHAs to scan.
 
-        If *head_only* is ``True``, return only ``HEAD``.
-        Otherwise return **all** reachable commits.
+        If *staged* is ``True``, returns a sentinel ``["STAGED"]``.
+        If *head_only* is ``True``, returns only ``HEAD``.
+        Otherwise returns **all** reachable commits.
         """
+        if self.staged:
+            return ["STAGED"]
+
         if self.head_only:
-            return [self.repo.head.commit.hexsha]
+            try:
+                return [self.repo.head.commit.hexsha]
+            except Exception:
+                return []
 
         return [c.hexsha for c in self.repo.iter_commits("--all")]
 
@@ -53,19 +93,47 @@ class GitWalker:
     # File iteration
     # ------------------------------------------------------------------
 
-    def get_file_contents(self, commit_sha: str) -> Iterator[tuple[str, str]]:
-        """Yield ``(file_path, text_content)`` for every non-binary file in *commit_sha*."""
+    def get_file_contents(
+        self,
+        commit_sha: str,
+        max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+    ) -> Iterator[tuple[str, str, str]]:
+        """Yield ``(file_path, text_content, blob_sha)`` for non-binary files.
+
+        Files larger than *max_file_size* or containing null bytes are skipped.
+        """
+        # 1. Staged files from Git index (pre-commit)
+        if commit_sha == "STAGED" or self.staged:
+            for (path, stage), entry in self.repo.index.entries.items():
+                if stage != 0:
+                    continue
+                try:
+                    stream = self.repo.odb.stream(entry.binsha)
+                    if hasattr(stream, "size") and stream.size > max_file_size:
+                        continue
+                    data: bytes = stream.read()
+                    if len(data) > max_file_size or b"\x00" in data[:8192]:
+                        continue
+                    text = data.decode("utf-8", errors="replace")
+                    yield (str(path), text, entry.hexsha)
+                except Exception:
+                    continue
+            return
+
+        # 2. Historical commit files
         commit = self.repo.commit(commit_sha)
         for blob in commit.tree.traverse():
             if blob.type != "blob":  # type: ignore[attr-defined]
                 continue
-            # Skip files that look binary
             try:
+                # Guard against huge files (e.g. database dumps, big datasets)
+                if blob.size > max_file_size:  # type: ignore[attr-defined]
+                    continue
                 data: bytes = blob.data_stream.read()  # type: ignore[attr-defined]
                 if b"\x00" in data[:8192]:
                     continue  # binary
                 text = data.decode("utf-8", errors="replace")
-                yield (blob.path, text)  # type: ignore[attr-defined]
+                yield (blob.path, text, blob.hexsha)  # type: ignore[attr-defined]
             except Exception:  # noqa: BLE001
                 continue  # unreadable — skip
 
@@ -75,6 +143,13 @@ class GitWalker:
 
     def get_commit_info(self, sha: str) -> dict[str, str]:
         """Return author, date and message for the given commit."""
+        if sha == "STAGED":
+            return {
+                "author": "Current User (Staged)",
+                "date": "Working Tree",
+                "message": "Staged changes for upcoming commit",
+            }
+
         commit = self.repo.commit(sha)
         return {
             "author": str(commit.author),
@@ -123,5 +198,5 @@ class GitWalker:
     # ------------------------------------------------------------------
 
     def delete_repo(self) -> None:
-        """Remove the repository directory from disk."""
-        shutil.rmtree(self.repo_path, ignore_errors=True)
+        """Remove the repository directory from disk safely on all platforms."""
+        safe_rmtree(self.repo_path)

@@ -11,7 +11,7 @@ from rich.console import Console
 
 from lickygit.config import ScanConfig, load_config, merge_configs
 from lickygit.core.finding import Severity
-from lickygit.core.git_walker import GitWalker, GitWalkerError
+from lickygit.core.git_walker import GitWalker, GitWalkerError, safe_rmtree
 from lickygit.core.scanner import ScanResult, Scanner
 from lickygit.detection.engine import DetectionEngine
 from lickygit.detection.patterns import PatternRule
@@ -44,6 +44,7 @@ def main(ctx: click.Context) -> None:
 @click.argument("repo_path", default=".", type=click.Path(exists=False))
 @click.option("--url", "-u", default=None, help="Clone a URL and scan it.")
 @click.option("--head-only", "-H", is_flag=True, help="Only scan HEAD, not full history.")
+@click.option("--staged", is_flag=True, help="Scan staged changes in Git index (ideal for pre-commit).")
 @click.option(
     "--format", "-f", "output_format",
     type=click.Choice(["terminal", "json", "csv", "sarif", "html"], case_sensitive=False),
@@ -72,6 +73,7 @@ def scan(
     repo_path: str,
     url: str | None,
     head_only: bool,
+    staged: bool,
     output_format: str | None,
     output_file: str | None,
     config_path: str | None,
@@ -101,6 +103,8 @@ def scan(
     cli: dict[str, object] = {}
     if head_only:
         cli["head_only"] = True
+    if staged:
+        cli["staged"] = True
     if output_format is not None:
         cli["output_format"] = output_format
     if output_file is not None:
@@ -179,7 +183,9 @@ def scan(
     scan_cfg = CoreScanConfig(
         repo_path=cfg.repo_path,
         head_only=cfg.head_only,
+        staged=cfg.staged,
         max_workers=cfg.max_workers,
+        max_file_size=cfg.max_file_size,
         exclude_paths=cfg.exclude_paths,
         include_paths=cfg.include_paths,
         min_severity=cfg.min_severity,
@@ -192,9 +198,9 @@ def scan(
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(2)
     finally:
-        # Cleanup cloned repo
+        # Cleanup cloned repo safely (handles Windows read-only locks)
         if cfg.delete_after_scan and cloned_path:
-            shutil.rmtree(cloned_path, ignore_errors=True)
+            safe_rmtree(cloned_path)
 
     # ── 7. Output results ──────────────────────────────────────────────
     _output_results(result, cfg)
@@ -272,7 +278,7 @@ def hook_install(severity: str) -> None:
     script = f"""#!/usr/bin/env sh
 # lickyGit pre-commit hook — auto-generated
 # Scans staged changes for secrets before committing.
-lickygit scan --head-only --severity {severity} --no-banner
+lickygit scan --staged --severity {severity} --no-banner
 """
     hook_path.write_text(script, encoding="utf-8")
     hook_path.chmod(0o755)

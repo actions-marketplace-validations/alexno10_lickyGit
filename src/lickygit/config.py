@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from lickygit.core.finding import Severity
+from lickygit.core.git_walker import DEFAULT_MAX_FILE_SIZE
 
 
 @dataclass
@@ -20,7 +21,9 @@ class ScanConfig:
     # ── repo ───────────────────────────────────────────────────────────
     repo_path: str = "."
     head_only: bool = False
+    staged: bool = False
     max_workers: int = 4
+    max_file_size: int = DEFAULT_MAX_FILE_SIZE
 
     # ── detection ──────────────────────────────────────────────────────
     use_entropy: bool = True
@@ -113,7 +116,9 @@ def load_config(path: str | Path | None = None) -> ScanConfig:
 
     return ScanConfig(
         head_only=scan.get("head_only", False),
+        staged=scan.get("staged", False),
         max_workers=scan.get("max_workers", 4),
+        max_file_size=scan.get("max_file_size", DEFAULT_MAX_FILE_SIZE),
         min_severity=_parse_severity(scan.get("severity", "low")),
         use_entropy=detection.get("use_entropy", True),
         use_keywords=detection.get("use_keywords", True),

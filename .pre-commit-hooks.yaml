@@ -1,7 +1,7 @@
 - id: lickygit
   name: lickyGit Secret Scanner
   description: Scan for secrets in staged files before committing.
-  entry: lickygit scan --head-only --severity high --no-banner
+  entry: lickygit scan --staged --severity high --no-banner
   language: python
   types: [text]
   stages: [pre-commit]

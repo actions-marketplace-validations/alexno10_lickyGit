@@ -70,7 +70,7 @@ class SarifFormatter:
                         "driver": {
                             "name": "lickyGit",
                             "version": "1.0.0",
-                            "informationUri": "https://github.com/lickygit/lickygit",
+                            "informationUri": "https://github.com/alexno10/lickyGit",
                             "rules": list(rules_seen.values()),
                         }
                     },

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass
 
@@ -50,7 +51,7 @@ class PatternMatcher:
     # ------------------------------------------------------------------ #
 
     def scan_line(self, line: str, line_number: int = 0) -> list[PatternMatch]:
-        """Return all :class:`PatternMatch` es found in *line*."""
+        """Return all :class:`PatternMatch`es found in a single *line*."""
         matches: list[PatternMatch] = []
         for rule in self.rules:
             for m in rule.pattern.finditer(line):
@@ -67,12 +68,54 @@ class PatternMatcher:
         return matches
 
     # ------------------------------------------------------------------ #
-    # Multi-line content scan
+    # Multi-line content scan (high-performance)
     # ------------------------------------------------------------------ #
 
     def scan_content(self, content: str) -> list[PatternMatch]:
-        """Scan every line of *content* and return all matches."""
+        """Scan *content* across all rules efficiently in C-speed finditer passes.
+
+        Avoids splitting lines into Python strings up front and avoids repeating
+        N rules for M lines. Line positions are computed lazily only when matches occur.
+        """
+        if not content or not self.rules:
+            return []
+
         all_matches: list[PatternMatch] = []
-        for line_no, line in enumerate(content.splitlines(), start=1):
-            all_matches.extend(self.scan_line(line, line_number=line_no))
+        line_starts: list[int] | None = None
+
+        for rule in self.rules:
+            for m in rule.pattern.finditer(content):
+                # Lazily index line start offsets only if a match is detected
+                if line_starts is None:
+                    line_starts = [0]
+                    for nl in re.finditer(r"\n", content):
+                        line_starts.append(nl.end())
+
+                start_pos = m.start()
+                end_pos = m.end()
+
+                # Binary search to find the exact 1-indexed line number in O(log N)
+                line_idx = bisect.bisect_right(line_starts, start_pos) - 1
+                line_no = line_idx + 1
+
+                # Extract line content without splitting the whole file
+                l_start = line_starts[line_idx]
+                l_end = (
+                    line_starts[line_idx + 1] - 1
+                    if line_idx + 1 < len(line_starts)
+                    else len(content)
+                )
+                line_content = content[l_start:l_end].rstrip("\r\n")
+
+                all_matches.append(
+                    PatternMatch(
+                        rule=rule,
+                        matched_text=m.group(),
+                        line_number=line_no,
+                        line_content=line_content,
+                        start_pos=start_pos,
+                        end_pos=end_pos,
+                    )
+                )
+
         return all_matches

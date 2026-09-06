@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from lickygit.core.finding import Finding, Severity
-from lickygit.core.git_walker import GitWalker
+from lickygit.core.git_walker import DEFAULT_MAX_FILE_SIZE, GitWalker
 from lickygit.detection.engine import DetectionEngine
 from lickygit.filters.allowlist import AllowList
 from lickygit.filters.path_filter import PathFilter
@@ -20,10 +21,12 @@ class ScanConfig:
 
     repo_path: str = "."
     head_only: bool = False
+    staged: bool = False
     max_workers: int = 4
     exclude_paths: list[str] = field(default_factory=list)
     include_paths: list[str] = field(default_factory=list)
     min_severity: Severity = Severity.LOW
+    max_file_size: int = DEFAULT_MAX_FILE_SIZE
 
 
 @dataclass
@@ -51,7 +54,7 @@ class ScanResult:
 class Scanner:
     """Orchestrate a full Git secret scan.
 
-    Walks every revision (or HEAD only) through :class:`GitWalker`,
+    Walks every revision (or HEAD only / staged only) through :class:`GitWalker`,
     detects secrets via :class:`DetectionEngine`, filters with
     :class:`PathFilter` and :class:`AllowList`, and returns a
     :class:`ScanResult`.
@@ -71,6 +74,8 @@ class Scanner:
             exclude_patterns=config.exclude_paths or None,
             include_patterns=config.include_paths or None,
         )
+        self._scanned_blobs: set[str] = set()
+        self._blob_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
 
@@ -78,7 +83,11 @@ class Scanner:
         """Execute the scan and return results."""
         t0 = time.perf_counter()
 
-        walker = GitWalker(self.config.repo_path, head_only=self.config.head_only)
+        walker = GitWalker(
+            self.config.repo_path,
+            head_only=self.config.head_only,
+            staged=self.config.staged,
+        )
         revisions = walker.get_revisions()
 
         all_findings: list[Finding] = []
@@ -93,7 +102,11 @@ class Scanner:
         else:
             # Parallel (isolated GitWalker instance per thread)
             def _worker_scan(sha: str) -> tuple[list[Finding], int]:
-                local_walker = GitWalker(self.config.repo_path, head_only=self.config.head_only)
+                local_walker = GitWalker(
+                    self.config.repo_path,
+                    head_only=self.config.head_only,
+                    staged=self.config.staged,
+                )
                 return self._scan_revision(local_walker, sha)
 
             with ThreadPoolExecutor(max_workers=self.config.max_workers) as pool:
@@ -133,9 +146,18 @@ class Scanner:
         findings: list[Finding] = []
         n_files = 0
 
-        for file_path, content in walker.get_file_contents(commit_sha):
+        for file_path, content, blob_sha in walker.get_file_contents(
+            commit_sha, max_file_size=self.config.max_file_size
+        ):
             if not self.path_filter.should_scan(file_path):
                 continue
+
+            # Cache check: avoid re-scanning identical Git blobs across commits
+            with self._blob_lock:
+                if blob_sha in self._scanned_blobs:
+                    continue
+                self._scanned_blobs.add(blob_sha)
+
             n_files += 1
 
             file_findings = self.engine.scan_content(
