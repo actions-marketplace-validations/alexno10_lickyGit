@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from lickygit.core.scanner import ScanResult
+if TYPE_CHECKING:
+    from lickygit.core.scanner import ScanResult
 
 _SEVERITY_TO_GITLAB: dict[str, str] = {
     "CRITICAL": "blocker",
@@ -24,29 +25,27 @@ class GitlabCodeQualityFormatter:
     pipeline reports.
     """
 
-    def format(self, result: ScanResult) -> str:  # noqa: A003
+    def format(self, result: ScanResult) -> str:
         """Return a Code Quality JSON string."""
         issues: list[dict[str, object]] = []
 
         for f in result.findings:
-            fingerprint = hashlib.md5(
-                f"{f.rule_id}:{f.file_path}:{f.matched_text}".encode()
-            ).hexdigest()
-
-            issues.append({
-                "type": "issue",
-                "check_name": f.rule_id,
-                "description": f"Secret detected: {f.rule_name} ({f.redacted_value})",
-                "severity": _SEVERITY_TO_GITLAB.get(f.severity.value, "minor"),
-                "fingerprint": fingerprint,
-                "categories": ["Security"],
-                "location": {
-                    "path": f.file_path.replace("\\", "/"),
-                    "lines": {
-                        "begin": f.line_number or 1,
+            issues.append(
+                {
+                    "type": "issue",
+                    "check_name": f.rule_id,
+                    "description": f"Secret detected: {f.rule_name} ({f.redacted_value})",
+                    "severity": _SEVERITY_TO_GITLAB.get(f.severity.value, "minor"),
+                    "fingerprint": f.fingerprint,
+                    "categories": ["Security"],
+                    "location": {
+                        "path": f.file_path.replace("\\", "/"),
+                        "lines": {
+                            "begin": f.line_number or 1,
+                        },
                     },
-                },
-            })
+                }
+            )
 
         return json.dumps(issues, indent=2, ensure_ascii=False)
 

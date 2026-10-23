@@ -4,26 +4,79 @@ from __future__ import annotations
 
 from fnmatch import fnmatch
 
-
 # Default patterns to exclude (binary, generated, vendored)
 DEFAULT_EXCLUDE_PATTERNS: list[str] = [
     # Binaries / media
-    "*.pyc", "*.pyo", "*.so", "*.dll", "*.exe", "*.bin",
-    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg", "*.bmp", "*.webp",
-    "*.woff", "*.woff2", "*.ttf", "*.eot",
-    "*.mp3", "*.mp4", "*.avi", "*.mov",
-    "*.zip", "*.tar.gz", "*.tgz", "*.rar", "*.7z", "*.jar", "*.war",
-    "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
+    "*.pyc",
+    "*.pyo",
+    "*.so",
+    "*.dll",
+    "*.exe",
+    "*.bin",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.ico",
+    "*.svg",
+    "*.bmp",
+    "*.webp",
+    "*.woff",
+    "*.woff2",
+    "*.ttf",
+    "*.eot",
+    "*.mp3",
+    "*.mp4",
+    "*.avi",
+    "*.mov",
+    "*.zip",
+    "*.tar.gz",
+    "*.tgz",
+    "*.rar",
+    "*.7z",
+    "*.jar",
+    "*.war",
+    "*.pdf",
+    "*.doc",
+    "*.docx",
+    "*.xls",
+    "*.xlsx",
     # Lock / generated / examples / schemas
-    "*.min.js", "*.min.css", "*.map", "*.lock",
-    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Pipfile.lock",
-    "poetry.lock", "Cargo.lock", "composer.lock", "Gemfile.lock",
-    "go.sum", "go.work.sum", "*.sum", "*.schema.json",
-    "*.example", "*.sample", "*.template", ".env.example", ".env.sample", ".env.template",
+    "*.min.js",
+    "*.min.css",
+    "*.map",
+    "*.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "Pipfile.lock",
+    "poetry.lock",
+    "Cargo.lock",
+    "composer.lock",
+    "Gemfile.lock",
+    "go.sum",
+    "go.work.sum",
+    "*.sum",
+    "*.schema.json",
+    "*.example",
+    "*.sample",
+    "*.template",
+    ".env.example",
+    ".env.sample",
+    ".env.template",
     # Directories
-    "node_modules/*", ".git/*", "vendor/*", "__pycache__/*",
-    ".venv/*", "venv/*", ".tox/*", ".mypy_cache/*",
-    "dist/*", "build/*", ".eggs/*", "target/*",
+    "node_modules/*",
+    ".git/*",
+    "vendor/*",
+    "__pycache__/*",
+    ".venv/*",
+    "venv/*",
+    ".tox/*",
+    ".mypy_cache/*",
+    "dist/*",
+    "build/*",
+    ".eggs/*",
+    "target/*",
 ]
 
 
@@ -41,7 +94,8 @@ class PathFilter:
         include_patterns: list[str] | None = None,
     ) -> None:
         self.exclude_patterns = (
-            list(exclude_patterns) if exclude_patterns is not None
+            list(exclude_patterns)
+            if exclude_patterns is not None
             else list(DEFAULT_EXCLUDE_PATTERNS)
         )
         self.include_patterns = list(include_patterns) if include_patterns else []
@@ -53,13 +107,14 @@ class PathFilter:
         name = normalized.rsplit("/", 1)[-1]
 
         # Include patterns override excludes
-        if self.include_patterns:
-            if any(fnmatch(normalized, pat) or fnmatch(name, pat) for pat in self.include_patterns):
-                return True
+        if self.include_patterns and any(
+            fnmatch(normalized, pat) or fnmatch(name, pat)
+            for pat in self.include_patterns
+        ):
+            return True
 
         # Check excludes against both relative path and basename
-        for pat in self.exclude_patterns:
-            if fnmatch(normalized, pat) or fnmatch(name, pat):
-                return False
-
-        return True
+        return not any(
+            fnmatch(normalized, pat) or fnmatch(name, pat)
+            for pat in self.exclude_patterns
+        )

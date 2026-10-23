@@ -5,67 +5,34 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from lickygit.filters.value_filter import ValueFilter
+
 # --------------------------------------------------------------------------- #
 # Default keyword list
 # --------------------------------------------------------------------------- #
 
 DEFAULT_KEYWORDS: list[str] = [
-    "api_key", "apikey",
-    "access_key", "access_token",
+    "api_key",
+    "apikey",
+    "access_key",
+    "access_token",
     "auth_token",
     "client_secret",
-    "connection_string", "conn_str",
-    "database_url", "db_password", "db_pass",
+    "connection_string",
+    "conn_str",
+    "database_url",
+    "db_password",
+    "db_pass",
     "encryption_key",
-    "password", "passwd", "pwd",
-    "private_key", "private-key",
-    "secret", "secret_key",
+    "password",
+    "passwd",
+    "pwd",
+    "private_key",
+    "private-key",
+    "secret",
+    "secret_key",
     "token",
 ]
-
-# --------------------------------------------------------------------------- #
-# Values to ignore (false positives)
-# --------------------------------------------------------------------------- #
-
-_FALSE_POSITIVE_VALUES: set[str] = {
-    "", "true", "false", "null", "none", "nil", "undefined",
-    "todo", "fixme", "change_me", "changeme", "replace_me",
-    "placeholder", "example", "test", "dummy", "sample",
-    "your_api_key_here", "your-api-key-here", "insert_here",
-    "xxx", "yyy", "zzz", "value", "val", "values", "string", "text", "var", "variable",
-    "lambda", "function", "func", "callback", "handler",
-    "latest", "stable", "nightly", "write", "read", "all", "root", "nobody",
-    "required", "optional", "needed", "needed.", "default",
-}
-
-_FALSE_POSITIVE_PREFIXES: tuple[str, ...] = (
-    "your-", "your_", "my-", "my_", "<", "${", "%(", "{{",
-    "example", "test", "dummy", "sample", "fake", "lambda", "func",
-    # Python env loaders
-    "os.getenv", "os.environ", "process.env", "sys.getenv", "system.getenv",
-    # Rust env loaders
-    "std::env::var", "std::env::var_os", "env::var", "env::var_os",
-    # Go env loaders
-    "os.getenv", "os.lookupenv",
-    # Java / C# env loaders
-    "system.getenv", "environment.getenvironmentvariable",
-    # Generic config/setting loaders
-    "env(", "getenv(", "config(", "config.", "dotenv(", "settings.", "params.",
-    "cfg.", "conf.", "options.", "opts.", "props.", "properties.",
-    "self.", "this.", "request.", "update.", "ctx.", "context.", "auth.",
-    "str(", "int(", "bool(", "dict(", "list(", "set(",
-    # Type annotations (Rust, TypeScript, Go, etc.)
-    "&str", "&[", "option<", "some(", "vec<", "box<", "arc<", "rc<",
-    "string>", "result<", "hashmap<",
-    # Doc / placeholder
-    "...", "your ", "insert ",
-)
-
-_FALSE_POSITIVE_SUFFIXES: tuple[str, ...] = (
-    ">", "}", ")", "...", "here", "_test", "-test",
-    # Rust / C++ type closers
-    ">()", ">>", ">();",
-)
 
 # --------------------------------------------------------------------------- #
 # Line-level heuristics: skip entire lines matching these patterns
@@ -73,19 +40,20 @@ _FALSE_POSITIVE_SUFFIXES: tuple[str, ...] = (
 
 # Comment-only lines (Python/Shell #, C/Rust //, SQL --, Lua --)
 _COMMENT_RE = re.compile(
-    r"^\s*(?://|#|--|/\*|\*|;|%|<!--)", re.MULTILINE,
+    r"^\s*(?://|#|--|/\*|\*|;|%|<!--)",
+    re.MULTILINE,
 )
 
 # Function / method signatures across languages
 _FUNC_SIGNATURE_RE = re.compile(
     r"(?:"
-    r"\bfn\s+\w+\s*\("                     # Rust: fn name(
-    r"|\bfunc\s+[\w(]"                      # Go: func name( or func (receiver)
-    r"|\bdef\s+\w+\s*\("                    # Python: def name(
-    r"|\bfunction\s+\w+\s*\("               # JS/PHP: function name(
+    r"\bfn\s+\w+\s*\("  # Rust: fn name(
+    r"|\bfunc\s+[\w(]"  # Go: func name( or func (receiver)
+    r"|\bdef\s+\w+\s*\("  # Python: def name(
+    r"|\bfunction\s+\w+\s*\("  # JS/PHP: function name(
     r"|\b(?:public|private|protected|static|async|override|virtual)\s+"  # Java/C#/TS modifiers
-    r"|\)\s*->\s*"                           # Rust/Python return type: ) -> Type
-    r"|\)\s*:\s*\w+"                         # TypeScript return type: ): Type
+    r"|\)\s*->\s*"  # Rust/Python return type: ) -> Type
+    r"|\)\s*:\s*\w+"  # TypeScript return type: ): Type
     r")",
     re.IGNORECASE,
 )
@@ -107,29 +75,34 @@ _TYPE_DEF_RE = re.compile(
 # Assignment patterns (covers most config formats)
 # --------------------------------------------------------------------------- #
 
-# Each pattern has named groups: `keyword` and `value`
-_ASSIGNMENT_PATTERNS: list[re.Pattern[str]] = [
-    # key = "value"  |  key = 'value'  |  key = value
-    re.compile(
-        r"""(?:^|[\s._-])(?P<keyword>{kw})"""
-        r"""\s*[=:]\s*['"]?(?P<value>[^'"\s,;#][^'"\n]{{0,200}})['"]?""",
-        re.IGNORECASE,
-    ),
-    # "key": "value"  (JSON)
-    re.compile(
+# Each pattern has named groups: `keyword` and either `qvalue` (quoted) or `uvalue` (unquoted)
+_ASSIGNMENT_PATTERNS: list[tuple[str, str]] = [
+    # "key": "value"  (JSON / quoted dict)
+    (
         r"""['"](?P<keyword>{kw})['"]"""
-        r"""\s*:\s*['"](?P<value>[^'"]+)['"]""",
-        re.IGNORECASE,
+        r"""\s*:\s*(?P<quote>['"])(?P<qvalue>[^'"\n]{{1,200}})(?P=quote)""",
+        "colon/json",
     ),
-    # export KEY=value
-    re.compile(
-        r"""export\s+(?P<keyword>{kw})\s*=\s*['"]?(?P<value>[^'"\s]+)['"]?""",
-        re.IGNORECASE,
+    # export KEY=value or export KEY="value"
+    (
+        r"""export\s+(?P<keyword>{kw})\s*=\s*(?:"""
+        r"""(?P<quote>['"])(?P<qvalue>[^'"\n]{{1,200}})(?P=quote)"""
+        r"""|(?P<uvalue>[^'"\s;#][^\s;#]{{0,200}}))""",
+        "export",
     ),
     # key => value  (Ruby, PHP)
-    re.compile(
-        r"""['"]?(?P<keyword>{kw})['"]?\s*=>\s*['"]?(?P<value>[^'"\s,;]+)['"]?""",
-        re.IGNORECASE,
+    (
+        r"""['"]?(?P<keyword>{kw})['"]?\s*=>\s*(?:"""
+        r"""(?P<quote>['"])(?P<qvalue>[^'"\n]{{1,200}})(?P=quote)"""
+        r"""|(?P<uvalue>[^'"\s,;#][^\s,;#]{{0,200}}))""",
+        "arrow",
+    ),
+    # key = "value"  |  key = 'value'  |  key = value
+    (
+        r"""(?:^|[\s._-])(?P<keyword>{kw})\s*[=:]\s*(?:"""
+        r"""(?P<quote>['"])(?P<qvalue>[^'"\n]{{1,200}})(?P=quote)"""
+        r"""|(?P<uvalue>[^'"\s,;#][^'"\n]{{0,200}}))""",
+        "equals",
     ),
 ]
 
@@ -142,14 +115,14 @@ class KeywordMatch:
     value: str
     line_number: int
     line_content: str
-    assignment_type: str  # "equals", "colon", "export", "arrow"
+    assignment_type: str  # "equals", "colon/json", "export", "arrow"
 
 
 class KeywordDetector:
     """Detect secrets via keyword-assignment pattern matching.
 
     Looks for lines like ``PASSWORD = 's3cret'`` and captures the value,
-    filtering out common placeholder / false-positive values.
+    filtering out common placeholder / false-positive values via :class:`ValueFilter`.
     """
 
     def __init__(
@@ -161,14 +134,14 @@ class KeywordDetector:
         self.keywords = keywords or DEFAULT_KEYWORDS
         self.case_sensitive = case_sensitive
         self.min_value_length = min_value_length
+        self._value_filter = ValueFilter(min_length=min_value_length)
 
         # Build compiled patterns with the keyword alternation baked in
         kw_alt = "|".join(re.escape(k) for k in self.keywords)
         flags = 0 if case_sensitive else re.IGNORECASE
         self._patterns: list[tuple[re.Pattern[str], str]] = []
-        for idx, pat in enumerate(_ASSIGNMENT_PATTERNS):
-            compiled = re.compile(pat.pattern.format(kw=kw_alt), flags)
-            label = ["equals", "colon/json", "export", "arrow"][idx]
+        for pat_str, label in _ASSIGNMENT_PATTERNS:
+            compiled = re.compile(pat_str.format(kw=kw_alt), flags)
             self._patterns.append((compiled, label))
 
     # ------------------------------------------------------------------ #
@@ -193,47 +166,11 @@ class KeywordDetector:
             return True
 
         # Struct / class / type definitions
-        if _TYPE_DEF_RE.match(stripped):
-            return True
-
-        return False
+        return bool(_TYPE_DEF_RE.match(stripped))
 
     def _is_false_positive(self, value: str) -> bool:
         """Return *True* if the value is a known false-positive."""
-        v = value.strip().strip("'\"").strip()
-
-        if len(v) < self.min_value_length:
-            return True
-
-        v_lower = v.lower()
-        if v_lower in _FALSE_POSITIVE_VALUES:
-            return True
-        if v_lower.startswith(_FALSE_POSITIVE_PREFIXES):
-            return True
-        if v_lower.endswith(_FALSE_POSITIVE_SUFFIXES):
-            return True
-
-        # Numbers or UID:GID (e.g. 1000:1000, 8080:8080)
-        if v.replace(":", "").replace("-", "").isdigit():
-            return True
-
-        # All identical characters (e.g. "xxxxxxxx")
-        if len(set(v)) == 1:
-            return True
-
-        # Value looks like a code expression (has parens, angle brackets, pipes)
-        code_chars = sum(1 for c in v if c in "<>(){}|&;")
-        if code_chars >= 2:
-            return True
-
-        # Natural language / documentation sentences (3+ words or English articles)
-        words = v.split()
-        if len(words) >= 3:
-            return True
-        if v_lower.startswith(("the ", "a ", "an ", "this ", "that ")):
-            return True
-
-        return False
+        return not self._value_filter.is_valid_secret(value)
 
     # ------------------------------------------------------------------ #
 
@@ -244,17 +181,29 @@ class KeywordDetector:
             return []
 
         matches: list[KeywordMatch] = []
+        seen_in_line: set[tuple[str, str]] = set()
+
         for pattern, assign_type in self._patterns:
             for m in pattern.finditer(line):
                 keyword = m.group("keyword")
-                raw_val = m.group("value").strip()
-                # Strip trailing inline comments for unquoted values (e.g. `val # comment`)
-                if not (raw_val.startswith(('"', "'")) and raw_val.endswith(('"', "'"))):
+                groups = m.groupdict()
+                qval = groups.get("qvalue")
+                if qval is not None:
+                    # Quoted value: preserve '//' and '#' inside quotes (e.g. database URLs)
+                    value = qval.strip()
+                else:
+                    # Unquoted value: strip inline comments (# or //) and trailing punctuation
+                    raw_val = (groups.get("uvalue") or "").strip()
                     raw_val = raw_val.split("#")[0].split("//")[0]
-                value = raw_val.strip().rstrip("'\"`,;")
+                    value = raw_val.strip().rstrip("'\"`,;")
 
                 if self._is_false_positive(value):
                     continue
+
+                dedup_key = (keyword.lower(), value)
+                if dedup_key in seen_in_line:
+                    continue
+                seen_in_line.add(dedup_key)
 
                 matches.append(
                     KeywordMatch(

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from lickygit.core.finding import Severity
-from lickygit.core.scanner import ScanResult
+
+if TYPE_CHECKING:
+    from lickygit.core.scanner import ScanResult
 
 _SEVERITY_STYLE: dict[Severity, str] = {
     Severity.CRITICAL: "bold red",
@@ -44,7 +48,7 @@ class TerminalFormatter:
 
     # ------------------------------------------------------------------ #
 
-    def format(self, result: ScanResult) -> None:  # noqa: A003
+    def format(self, result: ScanResult) -> None:
         """Print *result* to the terminal."""
         if self.show_banner:
             self.console.print(Panel(Text(_BANNER, style="bold green"), expand=False))
@@ -90,18 +94,20 @@ class TerminalFormatter:
 
         for f in result.findings:
             sev_style = _SEVERITY_STYLE.get(f.severity, "")
-            row = [
+            row: list[str | Text] = [
                 Text(f.severity.value, style=sev_style),
                 f.rule_name,
                 f"{f.file_path}" + (f":{f.line_number}" if f.line_number else ""),
                 f.redacted_value,
             ]
             if self.verbose:
-                row.extend([
-                    (f.commit_sha or "N/A")[:8],
-                    f.commit_author,
-                    f.line_content[:80],
-                ])
+                row.extend(
+                    [
+                        (f.commit_sha or "N/A")[:8],
+                        f.commit_author,
+                        f.line_content[:80],
+                    ]
+                )
             table.add_row(*[str(c) if not isinstance(c, Text) else c for c in row])
 
         self.console.print(table)

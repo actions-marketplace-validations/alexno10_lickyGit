@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field, asdict
+import hashlib
+from dataclasses import asdict, dataclass
 from typing import Any
 
 
@@ -62,17 +63,18 @@ class Finding:
     @property
     def fingerprint(self) -> str:
         """Unique stable identifier for baseline tracking."""
-        import hashlib
         raw = f"{self.rule_id}:{self.file_path}:{self.matched_text}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, redact: bool = False) -> dict[str, Any]:
         """Convert to a plain dictionary suitable for serialization."""
         d = asdict(self)
         d["severity"] = self.severity.value
         d["detection_type"] = self.detection_type.value
         d["redacted_value"] = self.redacted_value
         d["fingerprint"] = self.fingerprint
+        if redact:
+            d["matched_text"] = self.redacted_value
         return d
 
     def __str__(self) -> str:

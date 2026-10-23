@@ -5,8 +5,10 @@ from __future__ import annotations
 import bisect
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from lickygit.core.finding import Severity
+if TYPE_CHECKING:
+    from lickygit.core.finding import Severity
 
 
 @dataclass(frozen=True, slots=True)
