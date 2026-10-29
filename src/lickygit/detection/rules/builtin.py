@@ -14,7 +14,7 @@ def get_builtin_rules() -> list[PatternRule]:
     """Return the full set of built-in pattern rules.
 
     Each rule targets a specific, well-known secret format from cloud
-    providers, SaaS APIs and common credential patterns.
+    providers, SaaS APIs, AI/LLM platforms, and common credential patterns.
 
     Rules are compiled once and cached for the lifetime of the process.
     """
@@ -32,13 +32,51 @@ def get_builtin_rules() -> list[PatternRule]:
             description="AWS IAM access key identifier.",
         ),
         PatternRule(
+            id="aws-session-token",
+            name="AWS Temporary Access Key ID",
+            pattern=re.compile(r"(?<![A-Z0-9])ASIA[0-9A-Z]{16}(?![A-Z0-9])"),
+            severity=Severity.HIGH,
+            description="AWS STS temporary access key identifier.",
+        ),
+        PatternRule(
             id="aws-mws-key",
             name="AWS MWS Key",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-"
+                r"[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.CRITICAL,
             description="Amazon Marketplace Web Service auth token.",
         ),
-
+        # ── AI / LLM Providers ─────────────────────────────────────────
+        PatternRule(
+            id="openai-api-key",
+            name="OpenAI API Key",
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9_-])(?:"
+                r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"
+                r"|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}"
+                r")(?![a-zA-Z0-9_-])"
+            ),
+            severity=Severity.CRITICAL,
+            description="OpenAI platform or project API secret key.",
+        ),
+        PatternRule(
+            id="anthropic-api-key",
+            name="Anthropic API Key",
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9_-])sk-ant-api03-[A-Za-z0-9_-]{80,}(?![a-zA-Z0-9_-])"
+            ),
+            severity=Severity.CRITICAL,
+            description="Anthropic Claude API secret key.",
+        ),
+        PatternRule(
+            id="huggingface-token",
+            name="Hugging Face Access Token",
+            pattern=re.compile(r"(?<![a-zA-Z0-9])hf_[A-Za-z0-9]{34}(?![a-zA-Z0-9])"),
+            severity=Severity.HIGH,
+            description="Hugging Face Hub user access token.",
+        ),
         # ── GitHub ─────────────────────────────────────────────────────
         PatternRule(
             id="github-pat-classic",
@@ -50,7 +88,9 @@ def get_builtin_rules() -> list[PatternRule]:
         PatternRule(
             id="github-pat-fine",
             name="GitHub Fine-Grained Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])github_pat_[0-9a-zA-Z_]{82}(?![a-zA-Z0-9_])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])github_pat_[0-9a-zA-Z_]{82}(?![a-zA-Z0-9_])"
+            ),
             severity=Severity.CRITICAL,
             description="Fine-grained GitHub personal access token.",
         ),
@@ -64,39 +104,49 @@ def get_builtin_rules() -> list[PatternRule]:
         PatternRule(
             id="github-app-token",
             name="GitHub App Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])(?:ghu|ghs)_[0-9a-zA-Z]{36}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])(?:ghu|ghs)_[0-9a-zA-Z]{36}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.HIGH,
             description="GitHub App user-to-server or server-to-server token.",
         ),
-
         # ── GitLab ─────────────────────────────────────────────────────
         PatternRule(
             id="gitlab-pat",
             name="GitLab Personal Access Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])glpat-[0-9a-zA-Z_-]{20,}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])glpat-[0-9a-zA-Z_-]{20,}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.CRITICAL,
             description="GitLab personal access token.",
         ),
         PatternRule(
             id="gitlab-runner-token",
             name="GitLab Runner Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])GR1348941[0-9a-zA-Z_-]{20}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])GR1348941[0-9a-zA-Z_-]{20}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.HIGH,
             description="GitLab CI runner registration token.",
         ),
-
         # ── Slack ──────────────────────────────────────────────────────
         PatternRule(
             id="slack-bot-token",
             name="Slack Bot Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])xoxb-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])xoxb-[0-9]{10,13}-[0-9]{10,13}-"
+                r"[a-zA-Z0-9]{24}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.HIGH,
             description="Slack bot user OAuth token.",
         ),
         PatternRule(
             id="slack-user-token",
             name="Slack User Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])xoxp-[0-9]{10,13}-[0-9]{10,13}-[0-9]{10,13}-[a-z0-9]{32}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])xoxp-[0-9]{10,13}-[0-9]{10,13}-"
+                r"[0-9]{10,13}-[a-z0-9]{32}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.HIGH,
             description="Slack user OAuth token.",
         ),
@@ -104,40 +154,47 @@ def get_builtin_rules() -> list[PatternRule]:
             id="slack-webhook",
             name="Slack Webhook URL",
             pattern=re.compile(
-                r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+"
+                r"https://hooks\.slack\.com/services/"
+                r"T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+"
             ),
             severity=Severity.MEDIUM,
             description="Slack incoming webhook URL.",
         ),
-
         # ── Stripe ─────────────────────────────────────────────────────
         PatternRule(
             id="stripe-secret-key",
             name="Stripe Secret Key",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])sk_live_[0-9a-zA-Z]{24,}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])sk_live_[0-9a-zA-Z]{24,}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.CRITICAL,
             description="Stripe live secret API key.",
         ),
         PatternRule(
             id="stripe-publishable-key",
             name="Stripe Publishable Key",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])pk_live_[0-9a-zA-Z]{24,}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])pk_live_[0-9a-zA-Z]{24,}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.LOW,
             description="Stripe live publishable key (public, but flagged).",
         ),
         PatternRule(
             id="stripe-restricted-key",
             name="Stripe Restricted Key",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])rk_live_[0-9a-zA-Z]{24,}(?![a-zA-Z0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])rk_live_[0-9a-zA-Z]{24,}(?![a-zA-Z0-9])"
+            ),
             severity=Severity.HIGH,
             description="Stripe restricted API key.",
         ),
-
         # ── Google / GCP ───────────────────────────────────────────────
         PatternRule(
             id="google-api-key",
             name="Google API Key",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])AIza[0-9A-Za-z_-]{35}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])AIza[0-9A-Za-z_-]{35}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.HIGH,
             description="Google Cloud / Maps / Firebase API key.",
         ),
@@ -155,23 +212,59 @@ def get_builtin_rules() -> list[PatternRule]:
             severity=Severity.HIGH,
             description="Google OAuth client secret value.",
         ),
-
-        # ── Azure ──────────────────────────────────────────────────────
+        # ── Azure / Cloud / Infra ──────────────────────────────────────
         PatternRule(
             id="azure-subscription-key",
             name="Azure Subscription Key",
-            pattern=re.compile(r"(?i)(?:azure|subscription)[_-]?key\s*[=:]\s*['\"]?[0-9a-f]{32}['\"]?"),
+            pattern=re.compile(
+                r"(?i)(?:azure|subscription)[_-]?key\s*[=:]\s*['\"]?[0-9a-f]{32}['\"]?"
+            ),
             severity=Severity.HIGH,
             description="Azure cognitive services or subscription key.",
         ),
         PatternRule(
             id="azure-connection-string",
             name="Azure Connection String",
-            pattern=re.compile(r"DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[^;]+;"),
+            pattern=re.compile(
+                r"DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[^;]+;"
+            ),
             severity=Severity.CRITICAL,
             description="Azure Storage connection string.",
         ),
-
+        PatternRule(
+            id="digitalocean-token",
+            name="DigitalOcean Access Token",
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9_])do[po]_v1_[a-f0-9]{64}(?![a-f0-9])"
+            ),
+            severity=Severity.CRITICAL,
+            description="DigitalOcean personal access or OAuth token.",
+        ),
+        PatternRule(
+            id="hashicorp-vault-token",
+            name="HashiCorp Vault Token",
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9_-])hvs\.[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])"
+            ),
+            severity=Severity.CRITICAL,
+            description="HashiCorp Vault service authentication token.",
+        ),
+        PatternRule(
+            id="databricks-pat",
+            name="Databricks Personal Access Token",
+            pattern=re.compile(r"(?<![a-zA-Z0-9])dapi[a-f0-9]{32}(?![a-f0-9])"),
+            severity=Severity.HIGH,
+            description="Databricks workspace personal access token.",
+        ),
+        PatternRule(
+            id="postman-api-key",
+            name="Postman API Key",
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])PMAK-[a-f0-9]{24}-[a-f0-9]{34}(?![a-f0-9])"
+            ),
+            severity=Severity.HIGH,
+            description="Postman platform API key.",
+        ),
         # ── Twilio ─────────────────────────────────────────────────────
         PatternRule(
             id="twilio-account-sid",
@@ -187,16 +280,17 @@ def get_builtin_rules() -> list[PatternRule]:
             severity=Severity.HIGH,
             description="Twilio API key SID.",
         ),
-
         # ── SendGrid ──────────────────────────────────────────────────
         PatternRule(
             id="sendgrid-api-key",
             name="SendGrid API Key",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])SG\.[a-zA-Z0-9_-]{22}\."
+                r"[a-zA-Z0-9_-]{43}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.HIGH,
             description="SendGrid mail API key.",
         ),
-
         # ── Mailgun ────────────────────────────────────────────────────
         PatternRule(
             id="mailgun-api-key",
@@ -205,7 +299,6 @@ def get_builtin_rules() -> list[PatternRule]:
             severity=Severity.HIGH,
             description="Mailgun API key.",
         ),
-
         # ── npm / PyPI / Docker ────────────────────────────────────────
         PatternRule(
             id="npm-access-token",
@@ -217,41 +310,50 @@ def get_builtin_rules() -> list[PatternRule]:
         PatternRule(
             id="pypi-api-token",
             name="PyPI API Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])pypi-[a-zA-Z0-9_-]{100,}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])pypi-[a-zA-Z0-9_-]{100,}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.CRITICAL,
             description="PyPI package upload API token.",
         ),
         PatternRule(
             id="dockerhub-pat",
             name="Docker Hub PAT",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])dckr_pat_[a-zA-Z0-9_-]{20,}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])dckr_pat_[a-zA-Z0-9_-]{20,}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.HIGH,
             description="Docker Hub personal access token.",
         ),
-
         # ── Crypto / Keys ─────────────────────────────────────────────
         PatternRule(
             id="private-key",
             name="Private Key",
-            pattern=re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
+            pattern=re.compile(
+                r"-----BEGIN (?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED|PGP) )?"
+                r"PRIVATE KEY(?: BLOCK)?-----"
+            ),
             severity=Severity.CRITICAL,
-            description="PEM-encoded private key header.",
+            description="PEM or PGP-encoded private key header.",
         ),
         PatternRule(
             id="jwt-token",
             name="JSON Web Token",
-            pattern=re.compile(r"eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+"),
+            pattern=re.compile(
+                r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\."
+                r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])"
+            ),
             severity=Severity.MEDIUM,
             description="Encoded JWT (may contain claims).",
         ),
-
         # ── Misc ───────────────────────────────────────────────────────
         PatternRule(
             id="heroku-api-key",
             name="Heroku API Key",
             pattern=re.compile(
                 r"(?i)heroku[_-]?(?:api[_-]?)?key\s*[=:]\s*['\"]?"
-                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
             ),
             severity=Severity.HIGH,
             description="Heroku platform API key (UUID format).",
@@ -259,35 +361,46 @@ def get_builtin_rules() -> list[PatternRule]:
         PatternRule(
             id="telegram-bot-token",
             name="Telegram Bot Token",
-            pattern=re.compile(r"(?<![0-9])[0-9]{8,10}:[a-zA-Z0-9_-]{35}(?![a-zA-Z0-9_-])"),
+            pattern=re.compile(
+                r"(?<![0-9])[0-9]{8,10}:[a-zA-Z0-9_-]{35}(?![a-zA-Z0-9_-])"
+            ),
             severity=Severity.HIGH,
             description="Telegram Bot API token.",
         ),
         PatternRule(
             id="discord-bot-token",
             name="Discord Bot Token",
-            pattern=re.compile(r"[MN][A-Za-z0-9]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}"),
+            pattern=re.compile(
+                r"(?<![A-Za-z0-9_-])[MNO][A-Za-z0-9]{23,}\."
+                r"[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}(?![A-Za-z0-9_-])"
+            ),
             severity=Severity.HIGH,
             description="Discord bot or user authentication token.",
         ),
         PatternRule(
             id="shopify-access-token",
             name="Shopify Access Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])shpat_[a-fA-F0-9]{32}(?![a-fA-F0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])shpat_[a-fA-F0-9]{32}(?![a-fA-F0-9])"
+            ),
             severity=Severity.HIGH,
             description="Shopify Admin API access token.",
         ),
         PatternRule(
             id="shopify-shared-secret",
             name="Shopify Shared Secret",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])shpss_[a-fA-F0-9]{32}(?![a-fA-F0-9])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])shpss_[a-fA-F0-9]{32}(?![a-fA-F0-9])"
+            ),
             severity=Severity.HIGH,
             description="Shopify app shared secret.",
         ),
         PatternRule(
             id="square-access-token",
             name="Square Access Token",
-            pattern=re.compile(r"(?<![a-zA-Z0-9])sq0atp-[0-9A-Za-z_-]{22}(?![0-9A-Za-z_-])"),
+            pattern=re.compile(
+                r"(?<![a-zA-Z0-9])sq0atp-[0-9A-Za-z_-]{22}(?![0-9A-Za-z_-])"
+            ),
             severity=Severity.HIGH,
             description="Square (Block) OAuth access token.",
         ),

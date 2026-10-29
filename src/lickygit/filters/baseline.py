@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import datetime
 import json
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from lickygit import __version__
 
 if TYPE_CHECKING:
     from lickygit.core.finding import Finding
@@ -37,11 +40,15 @@ class Baseline:
             fps: set[str] = set()
             for item in data.get("findings", []):
                 if isinstance(item, dict) and "fingerprint" in item:
-                    fps.add(item["fingerprint"])
+                    fps.add(str(item["fingerprint"]))
                 elif isinstance(item, str):
                     fps.add(item)
             return cls(fps)
-        except Exception:
+        except Exception as exc:
+            warnings.warn(
+                f"Failed to parse baseline file '{p}': {exc}",
+                stacklevel=2,
+            )
             return cls()
 
     @classmethod
@@ -55,18 +62,20 @@ class Baseline:
             fp = f.fingerprint
             if fp not in fingerprints:
                 fingerprints.add(fp)
-                serialized_findings.append({
-                    "fingerprint": fp,
-                    "rule_id": f.rule_id,
-                    "rule_name": f.rule_name,
-                    "file_path": f.file_path,
-                    "severity": f.severity.value,
-                    "redacted_value": f.redacted_value,
-                    "commit_sha": f.commit_sha[:8],
-                })
+                serialized_findings.append(
+                    {
+                        "fingerprint": fp,
+                        "rule_id": f.rule_id,
+                        "rule_name": f.rule_name,
+                        "file_path": f.file_path,
+                        "severity": f.severity.value,
+                        "redacted_value": f.redacted_value,
+                        "commit_sha": f.commit_sha[:8],
+                    }
+                )
 
         payload: dict[str, Any] = {
-            "version": "1.0.0",
+            "version": __version__,
             "generator": "lickyGit",
             "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "total_findings": len(serialized_findings),

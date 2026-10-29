@@ -84,9 +84,9 @@ def _classify_encoding(token: str) -> str:
     return "unknown"
 
 
-_URL_RE = re.compile(r"https?://", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s'\"<>]*$", re.IGNORECASE)
 
-# Context window: how many chars before/after a token to inspect
+# Context window on the same line before the token to check if it's part of a URL
 _CTX_WINDOW = 60
 
 
@@ -94,14 +94,15 @@ def _is_likely_non_secret(token: str, content: str, start: int, end: int) -> boo
     """Return *True* if the token is probably NOT a secret.
 
     Heuristics:
-    - Token is embedded inside a URL (https://...)
+    - Token is embedded inside a URL (https://...) on the same contiguous URL token
     - Token contains path separators (/) suggesting a file path or URL path
     - Token looks like a version string, commit hash in a lockfile context, etc.
     """
-    # Check a small window around the token for URL context
-    ctx_start = max(0, start - _CTX_WINDOW)
-    ctx = content[ctx_start:end]
-    if _URL_RE.search(ctx):
+    # Check only the prefix on the same line immediately preceding the token
+    line_start = content.rfind("\n", 0, start) + 1
+    ctx_start = max(line_start, start - _CTX_WINDOW)
+    prefix = content[ctx_start:end]
+    if _URL_RE.search(prefix):
         return True
 
     # Path-like: contains slashes (URL paths, file paths)
@@ -109,10 +110,7 @@ def _is_likely_non_secret(token: str, content: str, start: int, end: int) -> boo
         return True
 
     # Contains dashes like a slug/package-name (e.g. x86_64-unknown-linux-gnu)
-    if "-" in token and token.count("-") >= 2:
-        return True
-
-    return False
+    return "-" in token and token.count("-") >= 2
 
 
 def find_high_entropy_strings(
@@ -130,7 +128,7 @@ def find_high_entropy_strings(
 
     Overlapping matches are deduplicated in favour of the higher-entropy one.
     """
-    matches: dict[tuple[int, int], EntropyMatch] = {}
+    candidates: list[EntropyMatch] = []
 
     for regex, label, threshold in [
         (_HEX_RE, "hex", hex_threshold),
@@ -141,6 +139,10 @@ def find_high_entropy_strings(
             if len(token) < min_length:
                 continue
 
+            # If a token is purely hex characters, let the hex pass handle it
+            if label == "base64" and set(token) <= _HEX_CHARS:
+                continue
+
             ent = calculate_shannon_entropy(token)
             if ent < threshold:
                 continue
@@ -149,14 +151,28 @@ def find_high_entropy_strings(
             if _is_likely_non_secret(token, content, m.start(), m.end()):
                 continue
 
-            key = (m.start(), m.end())
-            if key not in matches or matches[key].entropy < ent:
-                matches[key] = EntropyMatch(
+            candidates.append(
+                EntropyMatch(
                     text=token,
                     entropy=ent,
                     encoding=label,
                     start_pos=m.start(),
                     end_pos=m.end(),
                 )
+            )
 
-    return sorted(matches.values(), key=lambda em: em.start_pos)
+    if not candidates:
+        return []
+
+    # Deduplicate overlapping spans in favour of higher entropy (then longer match)
+    candidates.sort(key=lambda em: (em.entropy, em.end_pos - em.start_pos), reverse=True)
+    accepted: list[EntropyMatch] = []
+    for cand in candidates:
+        if any(
+            cand.start_pos < existing.end_pos and existing.start_pos < cand.end_pos
+            for existing in accepted
+        ):
+            continue
+        accepted.append(cand)
+
+    return sorted(accepted, key=lambda em: em.start_pos)

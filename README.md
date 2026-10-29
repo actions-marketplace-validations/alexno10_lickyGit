@@ -10,20 +10,22 @@ A modern, high-performance, cross-platform Git secret scanner that detects leake
 
 | Feature | Description |
 |---------|-------------|
-| 🔑 **35+ Built-in Rules** | AWS, GitHub, GitLab, Slack, Stripe, Google, Azure, npm, PyPI, Docker, and more (pre-compiled with regex boundary guards) |
-| 📊 **Shannon Entropy** | Detect high-entropy strings (random API keys, tokens) even without pattern rules |
-| 🔤 **Keyword Detection** | Find `password = "..."`, `api_key: "..."` assignments with intelligent false-positive heuristics |
-| ⚡ **Blob SHA Caching** | Multi-commit history scans avoid redundant Git object re-scanning |
-| 🪝 **Staged Changes Scanning** | Scan staged index changes (`--staged`) for zero-leak pre-commit protection |
-| ⏩ **Incremental & PR Scanning** | Scan only commits since a commit (`--since-commit`) or between branches (`--diff`) |
+| 🔑 **43+ Built-in Rules** | AWS (AKIA/ASIA), OpenAI, Anthropic, Hugging Face, GitHub, GitLab, Slack, Stripe, Google, Azure, DigitalOcean, HashiCorp Vault, Databricks, Postman, npm, PyPI, Docker, and more |
+| 📊 **Shannon Entropy** | Detect high-entropy strings (random API keys, tokens) with overlap deduplication |
+| 🔤 **Keyword Detection** | Find `password = "..."`, `database_url = "postgres://..."`, `api_key: "..."` assignments with intelligent false-positive filtering |
+| ⚡ **Diff-Based Git Engine & Blob Caching** | Inspects commit diffs and caches Git blobs (`(path, blob_sha)`) before reading streams for massive speedups |
+| 🪝 **Staged Changes Scanning** | Accurately scans newly added, modified, renamed, and copied staged index changes (`--staged`) for zero-leak pre-commit protection |
+| ⏩ **Incremental & PR Scanning** | Scan only changed files since a commit (`--since-commit`) or between branches (`--diff`) |
 | 🚨 **Smart CI Failure** | Exit with failure only if secrets meet or exceed a severity threshold (`--fail-on-severity`) |
 | 📑 **Baseline Support** | Suppress existing legacy findings with `--baseline` and `--generate-baseline` |
-| 🖥️ **Cross-Platform** | Works seamlessly on Windows, macOS, and Linux (normalizes path separators and handles Git pack locks) |
+| 🙈 **Inline Ignore Comments** | Suppress specific lines in code using `# lickygit:ignore` or `// pragma: allowlist secret` |
+| 🔒 **Report Redaction & CSV Hardening** | Optional `--redact` flag for JSON/CSV exports and built-in CSV formula injection protection |
+| 🖥️ **Cross-Platform** | Works seamlessly on Windows, macOS, and Linux (normalizes path separators and cleanly releases Git pack locks) |
 | 📝 **6 Output Formats** | Terminal (Rich), JSON, CSV, SARIF 2.1.0, GitLab Code Quality, and interactive dark-mode HTML |
-| 🚫 **Allowlisting** | Suppress known false positives with `.lickygit-allow` (supports regex and path scoping) |
+| 🚫 **Allowlisting** | Suppress known false positives with `.lickygit-allow` (supports regex and path/basename scoping) |
 | ⚙️ **Config Validation** | Project-level `.lickygit.toml` with `config check` and `config show` utilities |
 | 🧩 **Custom Rules** | Define your own regex rules in TOML or YAML |
-| 🐙 **Official GitHub Action** | Plug-and-play CI integration with code scanning SARIF upload and script injection hardening |
+| 🐙 **Official GitHub Action** | Plug-and-play CI integration with code scanning SARIF upload and array-safe argument handling |
 
 ---
 
@@ -52,13 +54,13 @@ lickygit scan
 # Scan only currently staged changes (pre-commit)
 lickygit scan --staged
 
-# Scan only the HEAD commit
+# Scan only the HEAD commit snapshot
 lickygit scan --head-only
 
 # Incremental scan (only new commits since a specific commit)
 lickygit scan --since-commit abc1234
 
-# Pull Request diff-aware scan (only commits between main and HEAD)
+# Pull Request diff-aware scan (only changes in main..HEAD)
 lickygit scan --diff main
 
 # Only report HIGH and CRITICAL findings
@@ -66,6 +68,9 @@ lickygit scan --severity high
 
 # Only exit with error code 1 if CRITICAL findings exist (warn on lower)
 lickygit scan --fail-on-severity critical
+
+# Export JSON or CSV with redacted secret values
+lickygit scan -f json --redact -o report.json
 
 # Scan a remote repository and clean up afterwards
 lickygit scan --url https://github.com/user/repo.git --delete
@@ -95,6 +100,9 @@ lickygit hook install
 # Block commits only when secrets are >= HIGH severity
 lickygit hook install --severity high
 
+# Overwrite an existing third-party pre-commit hook if needed
+lickygit hook install --force
+
 # Uninstall
 lickygit hook uninstall
 ```
@@ -106,7 +114,7 @@ Add this to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/alexno10/lickyGit
-    rev: v1.1.0
+    rev: v1.2.0
     hooks:
       - id: lickygit
 ```
@@ -149,7 +157,7 @@ jobs:
           fetch-depth: 0
 
       - name: Scan with lickyGit
-        uses: alexno10/lickyGit@v1.1.0
+        uses: alexno10/lickyGit@v1.2.0
         with:
           severity: 'high'
           upload-sarif: 'true'
@@ -203,6 +211,7 @@ baseline = ".lickygit-baseline.json"
 [output]
 format = "terminal"
 verbose = false
+redact = false
 ```
 
 ### Configuration CLI Tools
@@ -217,7 +226,18 @@ lickygit config show
 
 ---
 
-## 🚫 Allowlisting
+## 🚫 Allowlisting & Inline Ignores
+
+### Inline Comments
+
+Suppress a specific line directly in source code:
+
+```python
+TEST_TOKEN = "EXAMPLE_TEST_TOKEN_12345"  # lickygit:ignore
+MOCK_KEY = "EXAMPLE_DEV_SECRET_VALUE"  # pragma: allowlist secret
+```
+
+### `.lickygit-allow` File
 
 Create `.lickygit-allow` to suppress specific known false positives:
 
@@ -228,7 +248,7 @@ EXAMPLE_TOKEN_TO_ALLOW
 # Regex match
 regex:test_token_[a-z]+
 
-# Scoped to specific files (supports glob matching)
+# Scoped to specific files (supports path or basename glob matching)
 scope:*.test.py my_test_secret
 
 # With reason annotation
@@ -264,8 +284,8 @@ lickygit scan --custom-rules my-rules.toml
 | HTML | `-f html` | Standalone interactive dark-mode dashboard |
 | SARIF | `-f sarif` | GitHub Code Scanning / Security Tab (O(1) index, RFC URI compliant) |
 | GitLab | `-f gitlab` | GitLab CI Code Quality Report JSON |
-| JSON | `-f json` | CI/CD pipelines and automation scripts |
-| CSV | `-f csv` | Spreadsheet audits and compliance reports |
+| JSON | `-f json` | CI/CD pipelines and automation scripts (supports `--redact`) |
+| CSV | `-f csv` | Spreadsheet audits and compliance reports (supports `--redact`) |
 
 ---
 
@@ -273,8 +293,8 @@ lickygit scan --custom-rules my-rules.toml
 
 ```
 lickygit/
-├── core/           # Scanner, GitWalker (index/staged, commit history, diff ranges), Finding model
-├── detection/      # Entropy analyzer, Regex pattern matcher, Keywords detector, Rules
+├── core/           # Scanner, diff-aware GitWalker (index/staged, commit diffs, ranges), Finding model
+├── detection/      # Entropy analyzer, Regex pattern matcher, Keywords detector, 43+ Built-in & Custom Rules
 ├── filters/        # Allowlist, Path filter, Value filter, Baseline manager
 └── output/         # Terminal (Rich), JSON, CSV, SARIF 2.1.0, GitLab Code Quality, HTML Report
 ```

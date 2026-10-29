@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-import sys
+import warnings
 from pathlib import Path
 
+from lickygit.config import _load_toml
 from lickygit.core.finding import Severity
 from lickygit.detection.patterns import PatternRule
 
@@ -35,8 +36,19 @@ def _rules_from_dicts(raw_rules: list[dict[str, str]]) -> list[PatternRule]:
         try:
             compiled = re.compile(pattern_str)
         except re.error as exc:
-            import warnings
-            warnings.warn(f"Skipping rule '{rule_id}': invalid regex: {exc}")
+            warnings.warn(
+                f"Skipping rule '{rule_id}': invalid regex: {exc}",
+                stacklevel=2,
+            )
+            continue
+
+        try:
+            severity = _parse_severity(severity_str)
+        except ValueError as exc:
+            warnings.warn(
+                f"Skipping rule '{rule_id}': {exc}",
+                stacklevel=2,
+            )
             continue
 
         rules.append(
@@ -44,7 +56,7 @@ def _rules_from_dicts(raw_rules: list[dict[str, str]]) -> list[PatternRule]:
                 id=rule_id,
                 name=name,
                 pattern=compiled,
-                severity=_parse_severity(severity_str),
+                severity=severity,
                 description=description,
             )
         )
@@ -54,6 +66,7 @@ def _rules_from_dicts(raw_rules: list[dict[str, str]]) -> list[PatternRule]:
 # ---------------------------------------------------------------------- #
 # TOML loader
 # ---------------------------------------------------------------------- #
+
 
 def load_rules_from_toml(path: str | Path) -> list[PatternRule]:
     """Load custom rules from a TOML file.
@@ -71,19 +84,7 @@ def load_rules_from_toml(path: str | Path) -> list[PatternRule]:
     if not filepath.is_file():
         raise FileNotFoundError(f"Rules file not found: {filepath}")
 
-    if sys.version_info >= (3, 11):
-        import tomllib  # noqa: F811
-    else:
-        try:
-            import tomli as tomllib  # type: ignore[no-redef]
-        except ImportError as exc:
-            raise ImportError(
-                "Install 'tomli' for Python <3.11: pip install tomli"
-            ) from exc
-
-    with open(filepath, "rb") as fh:
-        data = tomllib.load(fh)
-
+    data = _load_toml(filepath)
     raw_rules: list[dict[str, str]] = data.get("rules", [])
     return _rules_from_dicts(raw_rules)
 
@@ -91,6 +92,7 @@ def load_rules_from_toml(path: str | Path) -> list[PatternRule]:
 # ---------------------------------------------------------------------- #
 # YAML loader (optional dependency)
 # ---------------------------------------------------------------------- #
+
 
 def load_rules_from_yaml(path: str | Path) -> list[PatternRule]:
     """Load custom rules from a YAML file.
@@ -107,7 +109,7 @@ def load_rules_from_yaml(path: str | Path) -> list[PatternRule]:
     Requires ``pyyaml`` to be installed.
     """
     try:
-        import yaml
+        import yaml  # type: ignore[import-untyped]
     except ImportError as exc:
         raise ImportError(
             "PyYAML is required for YAML rules: pip install lickygit[yaml]"

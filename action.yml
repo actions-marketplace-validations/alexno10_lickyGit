@@ -15,8 +15,12 @@ inputs:
     description: 'Minimum severity to report: low, medium, high, critical'
     required: false
     default: 'high'
+  fail-on-severity:
+    description: 'Exit with code 1 only if findings at or above this severity exist (low, medium, high, critical)'
+    required: false
+    default: ''
   format:
-    description: 'Output format: terminal, sarif, json, csv, html'
+    description: 'Output format: terminal, sarif, json, csv, html, gitlab'
     required: false
     default: 'terminal'
   output:
@@ -27,12 +31,24 @@ inputs:
     description: 'Path to baseline file to ignore known findings'
     required: false
     default: ''
+  since-commit:
+    description: 'Only scan commits after this SHA (incremental scanning)'
+    required: false
+    default: ''
+  diff:
+    description: 'Only scan commits in DIFF_BASE..HEAD (PR scanning)'
+    required: false
+    default: ''
   head-only:
     description: 'Scan only HEAD commit rather than full git history'
     required: false
     default: 'false'
   staged:
     description: 'Scan only staged changes'
+    required: false
+    default: 'false'
+  redact:
+    description: 'Redact matched secret values in JSON/CSV outputs'
     required: false
     default: 'false'
   upload-sarif:
@@ -65,39 +81,67 @@ runs:
       env:
         INPUT_PATH: ${{ inputs.path }}
         INPUT_SEVERITY: ${{ inputs.severity }}
+        INPUT_FAIL_ON_SEVERITY: ${{ inputs.fail-on-severity }}
         INPUT_FORMAT: ${{ inputs.format }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_HEAD_ONLY: ${{ inputs.head-only }}
         INPUT_STAGED: ${{ inputs.staged }}
         INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_SINCE_COMMIT: ${{ inputs.since-commit }}
+        INPUT_DIFF: ${{ inputs.diff }}
+        INPUT_REDACT: ${{ inputs.redact }}
         INPUT_UPLOAD_SARIF: ${{ inputs.upload-sarif }}
       run: |
-        ARGS="${INPUT_PATH} --severity ${INPUT_SEVERITY} --format ${INPUT_FORMAT}"
-        
-        if [ "${INPUT_HEAD_ONLY}" = "true" ]; then
-          ARGS="$ARGS --head-only"
-        fi
-        
-        if [ "${INPUT_STAGED}" = "true" ]; then
-          ARGS="$ARGS --staged"
-        fi
-        
-        if [ -n "${INPUT_OUTPUT}" ]; then
-          ARGS="$ARGS -o ${INPUT_OUTPUT}"
-        elif [ "${INPUT_UPLOAD_SARIF}" = "true" ]; then
-          ARGS="$ARGS -f sarif -o lickygit-results.sarif"
-        fi
-        
-        if [ -n "${INPUT_BASELINE}" ]; then
-          ARGS="$ARGS --baseline ${INPUT_BASELINE}"
+        FMT="${INPUT_FORMAT}"
+        OUT="${INPUT_OUTPUT}"
+
+        if [ "${INPUT_UPLOAD_SARIF}" = "true" ]; then
+          FMT="sarif"
+          if [ -z "${OUT}" ]; then
+            OUT="lickygit-results.sarif"
+          fi
         fi
 
-        echo "Running: lickygit scan $ARGS"
+        ARGS=("${INPUT_PATH}" --severity "${INPUT_SEVERITY}" --format "${FMT}")
+
+        if [ -n "${INPUT_FAIL_ON_SEVERITY}" ]; then
+          ARGS+=(--fail-on-severity "${INPUT_FAIL_ON_SEVERITY}")
+        fi
+
+        if [ "${INPUT_HEAD_ONLY}" = "true" ]; then
+          ARGS+=(--head-only)
+        fi
+
+        if [ "${INPUT_STAGED}" = "true" ]; then
+          ARGS+=(--staged)
+        fi
+
+        if [ "${INPUT_REDACT}" = "true" ]; then
+          ARGS+=(--redact)
+        fi
+
+        if [ -n "${OUT}" ]; then
+          ARGS+=(-o "${OUT}")
+        fi
+
+        if [ -n "${INPUT_BASELINE}" ]; then
+          ARGS+=(--baseline "${INPUT_BASELINE}")
+        fi
+
+        if [ -n "${INPUT_SINCE_COMMIT}" ]; then
+          ARGS+=(--since-commit "${INPUT_SINCE_COMMIT}")
+        fi
+
+        if [ -n "${INPUT_DIFF}" ]; then
+          ARGS+=(--diff "${INPUT_DIFF}")
+        fi
+
+        echo "Running: lickygit scan ${ARGS[*]}"
         set +e
-        lickygit scan $ARGS
+        lickygit scan "${ARGS[@]}"
         EXIT_CODE=$?
         echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
-        
+
         if [ "$EXIT_CODE" -ne 0 ] && [ "${INPUT_UPLOAD_SARIF}" != "true" ]; then
           exit $EXIT_CODE
         fi
@@ -116,5 +160,5 @@ runs:
       run: |
         if [ "${SCAN_EXIT_CODE}" -ne 0 ]; then
           echo "::error::lickyGit identified secrets in this repository."
-          exit ${SCAN_EXIT_CODE}
+          exit "${SCAN_EXIT_CODE}"
         fi

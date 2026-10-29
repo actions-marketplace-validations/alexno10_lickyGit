@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import bisect
+import re
+
 from lickygit.core.finding import DetectionType, Finding, Severity
 from lickygit.detection.entropy import find_high_entropy_strings
 from lickygit.detection.keywords import KeywordDetector
-from lickygit.detection.patterns import PatternMatch, PatternMatcher
+from lickygit.detection.patterns import PatternMatch, PatternMatcher, PatternRule
 from lickygit.detection.rules.builtin import get_builtin_rules
-from lickygit.detection.patterns import PatternRule
+
+_INLINE_IGNORE_RE = re.compile(
+    r"(?:lickygit\s*:\s*ignore|pragma\s*:\s*allowlist\s+secret)",
+    re.IGNORECASE,
+)
 
 
 class DetectionEngine:
@@ -65,17 +72,23 @@ class DetectionEngine:
         # ── 1. Pattern matching ────────────────────────────────────────
         if self._pattern_matcher:
             for pm in self._pattern_matcher.scan_content(content):
+                if _INLINE_IGNORE_RE.search(pm.line_content):
+                    continue
                 key = (file_path, pm.line_number, pm.matched_text)
                 if key in seen:
                     continue
                 seen.add(key)
-                findings.append(self._pattern_match_to_finding(
-                    pm, file_path, commit_sha, commit_author, commit_date,
-                ))
+                findings.append(
+                    self._pattern_match_to_finding(
+                        pm, file_path, commit_sha, commit_author, commit_date
+                    )
+                )
 
         # ── 2. Keyword detection ───────────────────────────────────────
         if self._keyword_detector:
             for km in self._keyword_detector.scan_content(content):
+                if _INLINE_IGNORE_RE.search(km.line_content):
+                    continue
                 key = (file_path, km.line_number, km.value)
                 if key in seen:
                     continue
@@ -98,19 +111,33 @@ class DetectionEngine:
 
         # ── 3. Entropy detection ───────────────────────────────────────
         if self._use_entropy:
-            lines = content.splitlines()
+            line_starts: list[int] | None = None
             for em in find_high_entropy_strings(
                 content,
                 base64_threshold=self._entropy_threshold,
             ):
-                key = (file_path, None, em.text)
+                if line_starts is None:
+                    line_starts = [0]
+                    for nl in re.finditer(r"\n", content):
+                        line_starts.append(nl.end())
+
+                line_idx = bisect.bisect_right(line_starts, em.start_pos) - 1
+                line_no = line_idx + 1
+                l_start = line_starts[line_idx]
+                l_end = (
+                    line_starts[line_idx + 1] - 1
+                    if line_idx + 1 < len(line_starts)
+                    else len(content)
+                )
+                line_content = content[l_start:l_end].rstrip("\r\n")
+
+                if _INLINE_IGNORE_RE.search(line_content):
+                    continue
+
+                key = (file_path, line_no, em.text)
                 if key in seen:
                     continue
                 seen.add(key)
-
-                # Find which line the match falls in
-                line_no = content[:em.start_pos].count("\n") + 1
-                line_content = lines[line_no - 1] if line_no <= len(lines) else ""
 
                 findings.append(
                     Finding(

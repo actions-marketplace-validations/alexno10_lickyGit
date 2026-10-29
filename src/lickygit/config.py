@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
+import warnings as _warnings
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ class ScanConfig:
     verbose: bool = False
     use_color: bool = True
     show_banner: bool = True
+    redact: bool = False
 
     # ── clone helpers ──────────────────────────────────────────────────
     clone_url: str | None = None
@@ -64,18 +66,34 @@ class ScanConfig:
 # ---------------------------------------------------------------------- #
 
 _KNOWN_SCAN_KEYS = {
-    "head_only", "staged", "max_workers", "max_file_size", "severity",
-    "since_commit", "diff_base", "fail_on_severity",
+    "head_only",
+    "staged",
+    "max_workers",
+    "max_file_size",
+    "severity",
+    "since_commit",
+    "diff_base",
+    "fail_on_severity",
 }
 _KNOWN_DETECTION_KEYS = {
-    "use_entropy", "use_keywords", "use_builtin_rules",
-    "entropy_threshold", "custom_rules",
+    "use_entropy",
+    "use_keywords",
+    "use_builtin_rules",
+    "entropy_threshold",
+    "custom_rules",
 }
 _KNOWN_FILTER_KEYS = {
-    "exclude", "include", "allowlist", "baseline",
+    "exclude",
+    "include",
+    "allowlist",
+    "baseline",
 }
 _KNOWN_OUTPUT_KEYS = {
-    "format", "verbose", "color", "banner",
+    "format",
+    "verbose",
+    "color",
+    "banner",
+    "redact",
 }
 
 
@@ -108,20 +126,21 @@ def validate_config(data: dict[str, Any]) -> list[str]:
 # TOML loader
 # ---------------------------------------------------------------------- #
 
+
 def _load_toml(path: Path) -> dict[str, Any]:
     """Read a TOML file and return its data as a dict."""
     if sys.version_info >= (3, 11):
-        import tomllib  # noqa: F811
+        import tomllib
     else:
         try:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
         except ImportError as exc:
             raise ImportError(
                 "Install 'tomli' for Python <3.11: pip install tomli"
             ) from exc
 
     with open(path, "rb") as fh:
-        return tomllib.load(fh)
+        return dict(tomllib.load(fh))
 
 
 def _find_config_file(start: Path | None = None) -> Path | None:
@@ -175,9 +194,8 @@ def load_config(path: str | Path | None = None) -> ScanConfig:
     # Validate config keys and print warnings
     config_warnings = validate_config(data)
     if config_warnings:
-        import warnings as _warnings
         for w in config_warnings:
-            _warnings.warn(f"Config ({config_path.name}): {w}")
+            _warnings.warn(f"Config ({config_path.name}): {w}", stacklevel=2)
 
     scan = data.get("scan", {})
     detection = data.get("detection", {})
@@ -206,6 +224,7 @@ def load_config(path: str | Path | None = None) -> ScanConfig:
         verbose=output.get("verbose", False),
         use_color=output.get("color", True),
         show_banner=output.get("banner", True),
+        redact=output.get("redact", False),
     )
 
 
@@ -213,15 +232,13 @@ def load_config(path: str | Path | None = None) -> ScanConfig:
 # Merge
 # ---------------------------------------------------------------------- #
 
+
 def merge_configs(file_config: ScanConfig, cli_overrides: dict[str, Any]) -> ScanConfig:
     """Create a new :class:`ScanConfig` by overlaying *cli_overrides* on *file_config*.
 
     Only keys present **and not-None** in *cli_overrides* take effect.
     """
-    merged = ScanConfig(**{
-        f.name: getattr(file_config, f.name)
-        for f in file_config.__dataclass_fields__.values()  # type: ignore[attr-defined]
-    })
+    merged = ScanConfig(**{f.name: getattr(file_config, f.name) for f in fields(file_config)})
     for key, value in cli_overrides.items():
         if value is not None and hasattr(merged, key):
             object.__setattr__(merged, key, value)

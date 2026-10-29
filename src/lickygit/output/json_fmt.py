@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from lickygit.core.scanner import ScanResult
+if TYPE_CHECKING:
+    from lickygit.core.scanner import ScanResult
 
 
 class JsonFormatter:
     """Serialize scan results as JSON."""
 
-    def __init__(self, *, pretty: bool = True) -> None:
+    def __init__(self, *, pretty: bool = True, redact: bool = False) -> None:
         self.pretty = pretty
+        self.redact = redact
 
-    def format(self, result: ScanResult) -> str:  # noqa: A003
+    def format(self, result: ScanResult) -> str:
         """Return a JSON string representation of *result*."""
         data = {
             "scan": {
@@ -24,7 +27,7 @@ class JsonFormatter:
                 "total_findings": len(result.findings),
                 "counts_by_severity": result.counts_by_severity,
             },
-            "findings": [f.to_dict() for f in result.findings],
+            "findings": [f.to_dict(redact=self.redact) for f in result.findings],
         }
         indent = 2 if self.pretty else None
         return json.dumps(data, indent=indent, ensure_ascii=False)
